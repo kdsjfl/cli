@@ -97,6 +97,8 @@ doppler secrets delete API_KEY CRYPTO_KEY`,
 }
 
 var validFormatList = strings.Join(models.SecretFormats, ", ")
+var validNameTransformersList = strings.Join(models.SecretsNameTransformerTypes, ", ")
+var validEnvCompatNameTransformersList = strings.Join(models.SecretsEnvCompatNameTransformerTypes, ", ")
 var secretsDownloadCmd = &cobra.Command{
 	Use:   "download <filepath>",
 	Short: "Download a config's secrets for later use",
@@ -334,6 +336,15 @@ func downloadSecrets(cmd *cobra.Command, args []string) {
 		}
 	}
 
+	nameTransformerString := cmd.Flag("name-transformer").Value.String()
+	var nameTransformer *models.SecretsNameTransformer
+	if nameTransformerString != "" {
+		nameTransformer = models.SecretsNameTransformerMap[nameTransformerString]
+		if nameTransformer == nil {
+			utils.HandleError(fmt.Errorf("invalid name transformer. Valid transformers are %s", validNameTransformersList))
+		}
+	}
+
 	fallbackPassphrase := getPassphrase(cmd, "fallback-passphrase", localConfig)
 	if fallbackPassphrase == "" {
 		utils.HandleError(errors.New("invalid fallback file passphrase"))
@@ -350,7 +361,7 @@ func downloadSecrets(cmd *cobra.Command, args []string) {
 		if enableCache {
 			metadataPath = controllers.MetadataFilePath(localConfig.Token.Value, localConfig.EnclaveProject.Value, localConfig.EnclaveConfig.Value)
 		}
-		secrets := fetchSecrets(localConfig, enableCache, enableFallback, fallbackPath, legacyFallbackPath, metadataPath, fallbackReadonly, fallbackOnly, exitOnWriteFailure, fallbackPassphrase)
+		secrets := fetchSecrets(localConfig, enableCache, enableFallback, fallbackPath, legacyFallbackPath, metadataPath, fallbackReadonly, fallbackOnly, exitOnWriteFailure, fallbackPassphrase, nameTransformer)
 
 		var err error
 		body, err = json.Marshal(secrets)
@@ -369,7 +380,7 @@ func downloadSecrets(cmd *cobra.Command, args []string) {
 		}
 
 		var apiError http.Error
-		_, _, body, apiError = http.DownloadSecrets(localConfig.APIHost.Value, utils.GetBool(localConfig.VerifyTLS.Value, true), localConfig.Token.Value, localConfig.EnclaveProject.Value, localConfig.EnclaveConfig.Value, format, "")
+		_, _, body, apiError = http.DownloadSecrets(localConfig.APIHost.Value, utils.GetBool(localConfig.VerifyTLS.Value, true), localConfig.Token.Value, localConfig.EnclaveProject.Value, localConfig.EnclaveConfig.Value, format, nameTransformer, "")
 		if !apiError.IsNil() {
 			utils.HandleError(apiError.Unwrap(), apiError.Message)
 		}
@@ -536,6 +547,7 @@ func init() {
 	secretsDownloadCmd.Flags().StringP("project", "p", "", "project (e.g. backend)")
 	secretsDownloadCmd.Flags().StringP("config", "c", "", "config (e.g. dev)")
 	secretsDownloadCmd.Flags().String("format", models.JSON.String(), fmt.Sprintf("output format. one of %s", validFormatList))
+	secretsDownloadCmd.Flags().String("name-transformer", "", fmt.Sprintf("output name transformer. one of %v", validNameTransformersList))
 	secretsDownloadCmd.Flags().String("passphrase", "", "passphrase to use for encrypting the secrets file. the default passphrase is computed using your current configuration.")
 	secretsDownloadCmd.Flags().Bool("no-file", false, "print the response to stdout")
 	// fallback flags
